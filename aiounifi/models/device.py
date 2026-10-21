@@ -977,7 +977,12 @@ class DeviceSetPortEnabledRequest(ApiRequest):
                 (item for item in port_overrides if item.get("port_idx") == idx),
                 None,
             )
-            if port_override and port_override.get("port_security_mac_address"):
+            if (
+                port_override
+                and port_override.get("port_security_mac_address")
+                and (port_override.get("port_security_enabled") or not target)
+            ):
+                # Port security with allowed MAC addresses filters, it doesn't block
                 raise ValueError(f"Port {idx} uses MAC address filtering")
 
             if port_override is None:

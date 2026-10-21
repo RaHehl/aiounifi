@@ -1259,6 +1259,156 @@ async def test_device_requests(
             {"port_idx": 1, "enabled": True},
             {"port_overrides": [{"port_idx": 1, "port_security_enabled": False}]},
         ),
+        (  # Port enable keeps a trunk port without native network
+            [
+                {
+                    "device_id": "01",
+                    "mac": "0",
+                    "port_overrides": [
+                        {
+                            "port_idx": 1,
+                            "native_networkconf_id": "",
+                            "tagged_vlan_mgmt": "custom",
+                            "excluded_networkconf_ids": ["guest"],
+                        }
+                    ],
+                    "port_table": [
+                        {"enable": True, "port_idx": 1},
+                        {"enable": True, "port_idx": 2},
+                    ],
+                }
+            ],
+            DeviceSetPortEnabledRequest,
+            {"port_idx": 1, "enabled": True},
+            {
+                "port_overrides": [
+                    {
+                        "port_idx": 1,
+                        "port_security_enabled": False,
+                        "native_networkconf_id": "",
+                        "tagged_vlan_mgmt": "custom",
+                        "excluded_networkconf_ids": ["guest"],
+                    }
+                ]
+            },
+        ),
+        (  # Port enable keeps a port without native network and tagged auto
+            [
+                {
+                    "device_id": "01",
+                    "mac": "0",
+                    "port_overrides": [
+                        {
+                            "port_idx": 1,
+                            "native_networkconf_id": "",
+                            "tagged_vlan_mgmt": "auto",
+                        }
+                    ],
+                    "port_table": [
+                        {"enable": True, "port_idx": 1},
+                        {"enable": True, "port_idx": 2},
+                    ],
+                }
+            ],
+            DeviceSetPortEnabledRequest,
+            {"port_idx": 1, "enabled": True},
+            {
+                "port_overrides": [
+                    {
+                        "port_idx": 1,
+                        "port_security_enabled": False,
+                        "native_networkconf_id": "",
+                        "tagged_vlan_mgmt": "auto",
+                    }
+                ]
+            },
+        ),
+        (  # Port disable of a blocked port keeps it blocked
+            [
+                {
+                    "device_id": "01",
+                    "mac": "0",
+                    "port_overrides": [
+                        {
+                            "port_idx": 1,
+                            "port_security_enabled": True,
+                            "native_networkconf_id": "",
+                            "voice_networkconf_id": "",
+                            "tagged_vlan_mgmt": "block_all",
+                            "forward": "disabled",
+                        }
+                    ],
+                    "port_table": [
+                        {"enable": True, "port_idx": 1},
+                        {"enable": True, "port_idx": 2},
+                    ],
+                }
+            ],
+            DeviceSetPortEnabledRequest,
+            {"port_idx": 1, "enabled": False},
+            {
+                "port_overrides": [
+                    {
+                        "port_idx": 1,
+                        "port_security_enabled": True,
+                        "native_networkconf_id": "",
+                        "voice_networkconf_id": "",
+                        "tagged_vlan_mgmt": "block_all",
+                        "forward": "disabled",
+                    }
+                ]
+            },
+        ),
+        (  # Port enable of a port whose MAC address filtering was turned off
+            [
+                {
+                    "device_id": "01",
+                    "mac": "0",
+                    "port_overrides": [
+                        {
+                            "port_idx": 1,
+                            "port_security_enabled": False,
+                            "port_security_mac_address": ["00:00:00:00:00:01"],
+                        }
+                    ],
+                    "port_table": [
+                        {"enable": True, "port_idx": 1},
+                        {"enable": True, "port_idx": 2},
+                    ],
+                }
+            ],
+            DeviceSetPortEnabledRequest,
+            {"port_idx": 1, "enabled": True},
+            {
+                "port_overrides": [
+                    {
+                        "port_idx": 1,
+                        "port_security_enabled": False,
+                        "port_security_mac_address": ["00:00:00:00:00:01"],
+                    }
+                ]
+            },
+        ),
+        (  # Port disable with port profile of an unsorted port table
+            [
+                {
+                    "device_id": "01",
+                    "mac": "0",
+                    "port_overrides": [],
+                    "port_table": [
+                        {"enable": True, "port_idx": 2, "portconf_id": "456"},
+                        {"enable": True, "port_idx": 1, "portconf_id": "123"},
+                    ],
+                }
+            ],
+            DeviceSetPortEnabledRequest,
+            {"port_idx": 1, "enabled": False},
+            {
+                "port_overrides": [
+                    {"port_idx": 1, "port_security_enabled": True, "portconf_id": "123"}
+                ]
+            },
+        ),
         (  # Port enable and disable multiple ports
             [
                 {
@@ -1356,6 +1506,26 @@ async def test_set_port_enabled_request_refuses_mac_filtering(
     with pytest.raises(ValueError, match="^Port 1 uses MAC address filtering$"):
         DeviceSetPortEnabledRequest.create(device, **data)
     assert device.raw == raw
+
+
+async def test_set_port_enabled_request_refuses_disable_with_mac_list() -> None:
+    """Test disabling doesn't turn a left over MAC address list into a filter."""
+    device = Device(
+        {
+            "device_id": "01",
+            "mac": "0",
+            "port_overrides": [
+                {
+                    "port_idx": 1,
+                    "port_security_enabled": False,
+                    "port_security_mac_address": ["00:00:00:00:00:01"],
+                }
+            ],
+            "port_table": [{"port_idx": 1, "enable": True}],
+        }
+    )
+    with pytest.raises(ValueError, match="^Port 1 uses MAC address filtering$"):
+        DeviceSetPortEnabledRequest.create(device, 1, False)
 
 
 async def test_set_port_enabled_request_leaves_device_unchanged() -> None:
